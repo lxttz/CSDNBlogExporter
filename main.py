@@ -3,14 +3,21 @@
 # Author: axzml
 # Date: 2020-03-07
 #############################
+
 import os
 import sys
 import shutil
 from os.path import join, exists
 import urllib.request
-import requests
+import urllib.error
 import argparse
-import glob
+import ssl
+
+# 创建 SSL context 绕过证书验证
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
 from bs4 import BeautifulSoup, NavigableString
 from utils import Parser
 
@@ -29,8 +36,6 @@ parser.add_argument('--markdown_dir', type=str, default='markdown',
                    help='Markdown Directory')
 parser.add_argument('--pdf_dir', type=str, default='pdf',
                    help='PDF Directory')
-# parser.add_argument('--figure_dir', type=str, default='figures',
-                   # help='Figures Directory')
 parser.add_argument('--with_title', action='store_true')
 parser.add_argument('--to_pdf', action='store_true')
 parser.add_argument('--rm_cache', action='store_true',
@@ -40,9 +45,23 @@ parser.add_argument('--combine_together', action='store_true',
                    ' And if to_pdf, the single file will be converted pdf format')
 args = parser.parse_args()
 
+def fetch_url(url):
+    """使用 urllib 获取页面内容"""
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    })
+    try:
+        with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
+            return response.read()
+    except Exception as e:
+        print(f"获取页面失败: {e}")
+        return None
+
 def html2md(url, md_file, with_title=False):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser', from_encoding="utf-8")
+    content = fetch_url(url)
+    if content is None:
+        return False
+    soup = BeautifulSoup(content, 'html.parser', from_encoding="utf-8")
     html = ""
     for child in soup.find_all('svg'):
         child.extract()
@@ -53,8 +72,9 @@ def html2md(url, md_file, with_title=False):
         html += str(c)
 
     parser = Parser(html)
-    with open(md_file, 'w') as f:
+    with open(md_file, 'w', encoding='utf-8') as f:
         f.write('{}\n'.format(''.join(parser.outputs)))
+    return True
 
 def generate_pdf(input_md_file, pdf_dir):
     if not exists(pdf_dir):
@@ -90,9 +110,6 @@ def get_category_article_info(soup):
     return url, title
 
 def download_csdn_category_url(category_url, md_dir, start_page=1, page_num=100, pdf_dir='pdf', to_pdf=False):
-    """
-    如果想下载某个 category 下的所有页面, 那么 page_num 设置大一些
-    """
     if not exists(md_dir):
         os.makedirs(md_dir)
 
@@ -102,15 +119,21 @@ def download_csdn_category_url(category_url, md_dir, start_page=1, page_num=100,
         suffix = '.html' if page == 1 else '_{}.html'.format(page)
         category_url_new = category_url.rstrip('.html') + suffix
         print('Getting Response From {}'.format(category_url_new))
-        response = requests.get(category_url_new)
-        soup = BeautifulSoup(response.content, 'html.parser', from_encoding="utf-8")
-        article_list = soup.find_all('ul', {'class': 'column_article_list'})[0]
+        content = fetch_url(category_url_new)
+        if content is None:
+            break
+        soup = BeautifulSoup(content, 'html.parser', from_encoding="utf-8")
+        
+        article_list_elem = soup.find_all('ul', {'class': 'column_article_list'})
+        if not article_list_elem:
+            print('No article list found in {}, I Will Skip It!'.format(category_url_new))
+            break
+        article_list = article_list_elem[0]
         p = article_list.find_all('p')
         if p and p[0].string == '空空如也':
             print('No Content in {}, I Will Skip It!'.format(category_url_new))
             break
         for child in article_list.children:
-            # if child.name == 'div': # and child.attrs['class'] == 'pagination-box': print(child)
             if child.name == 'li':
                 url, title = get_category_article_info(child)
                 article_url.append(url)
@@ -120,17 +143,20 @@ def download_csdn_category_url(category_url, md_dir, start_page=1, page_num=100,
         md_file = join(md_dir, title + '.md')
         print('BlogNum: {}, Exporting Markdown File To {}'.format(idx, md_file))
         if not exists(md_file):
-            html2md(url, md_file)
-            if to_pdf:
+            if html2md(url, md_file) and to_pdf:
                 generate_pdf(md_file, pdf_dir)
+        elif to_pdf:
+            generate_pdf(md_file, pdf_dir)
 
 
 def download_csdn_single_page(details_url, md_dir, with_title=True, pdf_dir='pdf', to_pdf=False):
     if not exists(md_dir):
         os.makedirs(md_dir)
-    response = requests.get(details_url)
-    soup = BeautifulSoup(response.content, 'html.parser', from_encoding="utf-8")
-    title = soup.find_all('h1', {'class': 'title-article'})[0].string  ## 使用 html 的 title 作为 md 文件名
+    content = fetch_url(details_url)
+    if content is None:
+        sys.exit(1)
+    soup = BeautifulSoup(content, 'html.parser', from_encoding="utf-8")
+    title = soup.find_all('h1', {'class': 'title-article'})[0].string
     title = '_'.join(title.replace('*', '').strip().split())
     md_file = join(md_dir, title + '.md')
     print('Export Markdown File To {}'.format(md_file))
@@ -168,8 +194,7 @@ if __name__ == '__main__':
 
     if args.combine_together:
         source_files = join(args.markdown_dir, '*.md')
-        md_file = 'my_together_file.md'  ## 当我清醒过来之后才发现取了一个这样的名字
-        os.system('cat {} > {}'.format(source_files, md_file))
+        md_file = 'my_together_file.md'
+        os.system('type {} > {}'.format(source_files, md_file))
         if args.to_pdf:
             generate_pdf(md_file, args.pdf_dir)
-

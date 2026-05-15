@@ -36,9 +36,10 @@ class Parser(object):
     def recursive(self, soup):
         if isinstance(soup, Comment): return
         elif isinstance(soup, NavigableString):
+            text = str(soup)
             for key, val in special_characters.items():
-                soup.string = soup.string.replace(key, val)
-            self.outputs.append(soup.string)
+                text = text.replace(key, val)
+            self.outputs.append(text)
         elif isinstance(soup, Tag):
             tag = soup.name
             if tag in ['h1', 'h2', 'h3', 'h4', 'h5']:
@@ -94,23 +95,10 @@ class Parser(object):
             # elif tag == 'blockquote':
                 # soup.contents.insert(0, NavigableString('> '))
             elif tag == 'img':
-                src = soup.attrs['src']
-                # pattern = r'.*\.png'
-                pattern = r'(.*\..*\?)|(.*\.(png|jpeg|jpg))'
-                result_tuple = re.findall(pattern, src)[0]
-                if result_tuple[0]:
-                    img_file = result_tuple[0].split('/')[-1].rstrip('?')
-                else:
-                    img_file = result_tuple[1].split('/')[-1].rstrip('?')
-                # img_file = re.findall(pattern, src)[0][0].split('/')[-1].rstrip('?') ## e.g. https://img-blog.csdnimg.cn/20200228210146931.png?
-                img_file = join(self.fig_dir, img_file)
-                download_img_cmd = 'aria2c --file-allocation=none -c -x 10 -s 10 -o {} {}'.format(img_file, src)
-                if not exists(img_file):
-                    os.system(download_img_cmd)
-                # soup.attrs['src'] = img_file
-                # self.outputs.append('\n' + str(soup.parent) + '\n')
-                code = '![{}]({})'.format(img_file, img_file)
-                self.outputs.append('\n' + code + '\n')
+                src = soup.attrs.get('src', '')
+                if src:
+                    code = '![image]({})'.format(src)
+                    self.outputs.append('\n' + code + '\n')
                 return
         if not hasattr(soup, 'children'): return
         for child in soup.children:
