@@ -1,0 +1,6 @@
+name = "csdn-exporter-worker"
+main = "worker.js"
+compatibility_date = "2025-06-18"
+
+# 部署到 Cloudflare Workers
+# $ wrangler deploy

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSDN 博客导出器</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font: 14px/1.6 -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #fafafa; color: #2c3e50;
+}
+
+.wrap { max-width: 720px; margin: 0 auto; padding: 40px 20px 60px; }
+
+/* 本地提示条 */
+.local-banner {
+  background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px;
+  padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #ad6800;
+}
+.local-banner a { color: #1677ff; text-decoration: none; }
+.local-banner code {
+  background: rgba(0,0,0,.06); padding: 2px 6px; border-radius: 3px; font-family: Consolas,monospace;
+}
+
+/* 头部 */
+.top { padding-bottom: 24px; border-bottom: 1px solid #eee; margin-bottom: 28px; }
+.top h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.top p  { font-size: 13px; color: #999; }
+
+/* 区域块 */
+.block { margin-bottom: 22px; }
+.block label { display:block; font-size:13px; color:#666; margin-bottom:6px; }
+
+/* 切换按钮 */
+.tabs { display:flex; gap:0; border:1px solid #d9d9d9; border-radius:6px; overflow:hidden; width:fit-content; }
+.tab {
+  padding:7px 20px; font-size:13px; cursor:pointer; background:#fff; color:#666;
+  border:none; border-right:1px solid #d9d9d9; transition:background .15s;
+}
+.tab:last-child { border-right:none; }
+.tab.on { background:#1677ff; color:#fff; border-color:#1677ff; }
+.tab:hover:not(.on) { background:#f5f5f5; }
+
+/* 输入 */
+.inp {
+  width:100%; padding:9px 14px; border:1px solid #d9d9d9; border-radius:6px;
+  font-size:14px; outline:none; font-family:inherit; transition:border-color .15s;
+}
+.inp:focus { border-color:#1677ff; box-shadow:0 0 0 2px rgba(22,119,255,.12); }
+
+/* 行内选项 */
+.line { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.line span { font-size:13px; color:#666; }
+.line .inp { width:72px; padding:6px; text-align:center; }
+
+/* checkbox */
+.chk { display:flex; align-items:center; gap:6px; font-size:13px; color:#555; cursor:pointer; }
+.chk input { accent-color:#1677ff; }
+
+/* 按钮 */
+.btns { display:flex; gap:10px; margin-top:18px; }
+.btn {
+  padding:8px 22px; border-radius:6px; font-size:14px; cursor:pointer;
+  border:1px solid #d9d9d9; background:#fff; color:#333; transition:all .15s;
+}
+.btn:hover { border-color:#1677ff; color:#1677ff; }
+.btn.primary { background:#1677ff; color:#fff; border-color:#1677ff; }
+.btn.primary:hover { background:#4096ff; }
+.btn.primary:disabled { background:#91caff; border-color:#91caff; cursor:not-allowed; }
+
+/* 进度 */
+.progress { height:4px; background:#e8e8e8; border-radius:2px; margin:14px 0 6px; overflow:hidden; }
+.progress .bar { height:100%; background:#1677ff; border-radius:2px; width:0; transition:width .3s; }
+.progress-tip { font-size:12px; color:#999; }
+
+/* 日志 */
+.log {
+  background:#1f1f1f; color:#b8d8a8; font:13px/1.7 'SF Mono','Consolas','Courier New',monospace;
+  border-radius:6px; padding:14px 16px; min-height:200px; max-height:420px;
+  overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+}
+
+/* 消息 */
+.msg { margin-top:10px; padding:10px 14px; border-radius:6px; font-size:13px; display:none; }
+.msg.show { display:block; }
+.msg.ok  { background:#f6ffed; border:1px solid #b7eb8f; color:#389e0d; }
+.msg.err { background:#fff2f0; border:1px solid #ffccc7; color:#cf1322; }
+
+.hide { display:none !important; }
+
+@media (max-width:500px) {
+  .wrap { padding:20px 14px 40px; }
+  .top h1 { font-size:20px; }
+  .btns { flex-direction:column; }
+  .btns .btn { width:100%; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <h1>CSDN 博客导出器</h1>
+    <p>导出为 Markdown 格式，支持单篇与批量</p>
+  </div>
+
+  <!-- ====== 本地代理提示（仅 CF 线上显示） ====== -->
+  <div class="local-banner hide" id="cfBanner">
+    <strong>🇨🇳 中国大陆用户：</strong>CSDN 服务器在国内，Cloudflare 海外节点无法直接访问。
+    请先运行 <code>python server.py</code>，然后访问 <a href="http://localhost:8787">http://localhost:8787</a> 使用本地版。
+    <br>海外用户请直接使用下方功能（公共代理可能不稳定）。
+  </div>
+
+  <!-- 类型切换 -->
+  <div class="block">
+    <label>导出类型</label>
+    <div class="tabs">
+      <button class="tab on" data-type="article">单篇文章</button>
+      <button class="tab" data-type="category">整个分类</button>
+    </div>
+  </div>
+
+  <!-- URL -->
+  <div class="block">
+    <label>CSDN 链接</label>
+    <input class="inp" id="urlInput" placeholder="https://blog.csdn.net/xxx/article/details/xxxxx">
+  </div>
+
+  <!-- 页码 -->
+  <div class="block hide" id="pageBlock">
+    <label>页码范围</label>
+    <div class="line">
+      <span>起始页</span><input class="inp" id="startPage" value="1" type="number" min="1">
+      <span>页数</span><input class="inp" id="pageNum" value="100" type="number" min="1" max="500">
+    </div>
+  </div>
+
+  <!-- 选项 -->
+  <div class="block">
+    <label class="chk"><input type="checkbox" id="mergeChk"> 合并为一个文件</label>
+  </div>
+
+  <!-- 按钮 -->
+  <div class="btns">
+    <button class="btn primary" id="startBtn" onclick="doExport()">开始导出</button>
+    <button class="btn hide" id="dlBtn" onclick="downloadMerged()">下载合并文件</button>
+    <button class="btn" onclick="resetLog()">清空日志</button>
+  </div>
+
+  <!-- 进度 -->
+  <div class="hide" id="progWrap">
+    <div class="progress"><div class="bar" id="progBar"></div></div>
+    <div class="progress-tip" id="progTip"></div>
+  </div>
+
+  <!-- 消息 -->
+  <div class="msg" id="msgBox"></div>
+
+  <!-- 日志 -->
+  <div class="block">
+    <label>导出日志</label>
+    <div class="log" id="logArea"></div>
+  </div>
+
+</div>
+
+<script>
+// ======== 环境检测 ========
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const API = IS_LOCAL ? 'http://localhost:8787' : '';
+
+// 线上环境显示提示
+if (!IS_LOCAL) {
+  document.getElementById('cfBanner').classList.remove('hide');
+}
+
+// ======== 工具 ========
+const $ = s => document.querySelector(s);
+const logEl = $('#logArea'), msgEl = $('#msgBox');
+const progWrap = $('#progWrap'), progBar = $('#progBar'), progTip = $('#progTip');
+const startBtn = $('#startBtn'), dlBtn = $('#dlBtn');
+let busy = false, merged = '';
+
+function log(s) { logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+
+function prog(pct, text) {
+  progWrap.classList.remove('hide');
+  progBar.style.width = pct + '%';
+  if (text) progTip.textContent = text;
+}
+
+function msg(cls, text) { msgEl.className = 'msg ' + cls + ' show'; msgEl.textContent = text; }
+
+function resetUI() {
+  busy = false; startBtn.disabled = false; startBtn.textContent = '开始导出';
+  progWrap.classList.add('hide'); msgEl.className = 'msg';
+}
+
+function resetLog() { logEl.textContent = ''; msgEl.className = 'msg'; merged = ''; dlBtn.classList.add('hide'); }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ======== 类型切换 ========
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = function() {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+    this.classList.add('on');
+    const u = $('#urlInput');
+    if (this.dataset.type === 'article') {
+      $('#pageBlock').classList.add('hide');
+      u.placeholder = 'https://blog.csdn.net/xxx/article/details/xxxxx';
+    } else {
+      $('#pageBlock').classList.remove('hide');
+      u.placeholder = 'https://blog.csdn.net/xxx/category/xxxxx.html';
+    }
+  };
+});
+
+// ======== HTML → MD ========
+function html2md(html, withTitle) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('svg, script, style, noscript, meta, link').forEach(e => e.remove());
+
+  let h = '';
+  if (withTitle) doc.querySelectorAll('div.article-title-box').forEach(e => h += e.outerHTML);
+  const cv = doc.querySelector('#content_views');
+  h += cv ? cv.outerHTML : (doc.body ? doc.body.innerHTML : html);
+  return convert(h);
+}
+
+function convert(html) {
+  const div = document.createElement('div'); div.innerHTML = html;
+  const out = []; walk(div, out, false); return out.join('');
+}
+
+function walk(node, out, inPre) {
+  if (!node) return;
+  if (node.nodeType === 3) {
+    out.push(node.textContent.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&'));
+    return;
+  }
+  if (node.nodeType !== 1) return;
+
+  const tag = node.tagName.toLowerCase();
+  const kids = Array.from(node.childNodes);
+
+  if (/^h[1-6]$/.test(tag)) {
+    const n = +tag[1]; out.push('\n'+'#'.repeat(n)+' ');
+    kids.forEach(k=>walk(k,out,inPre)); out.push('\n');
+  }
+  else if (tag==='a' && node.getAttribute('href')) {
+    out.push('['); kids.forEach(k=>walk(k,out,inPre)); out.push(']('+node.getAttribute('href')+')');
+  }
+  else if (tag==='b'||tag==='strong') {
+    out.push('**'); kids.forEach(k=>walk(k,out,inPre)); out.push('**');
+  }
+  else if (tag==='em'||tag==='i') {
+    out.push('*'); kids.forEach(k=>walk(k,out,inPre)); out.push('*');
+  }
+  else if (tag==='pre') {
+    kids.forEach(k=>walk(k,out,true));
+  }
+  else if (tag==='code') {
+    if (inPre) {
+      let lang = ''; const cls = node.getAttribute('class')||'';
+      'cpp|java|python|javascript|typescript|bash|shell|html|css|sql|go|rust|php|ruby|swift|kotlin|yaml|json|xml|markdown|c|csharp'.split('|').forEach(l=>{if(cls.includes(l))lang=l;});
+      out.push('\n```'+lang+'\n'+(node.textContent||'')+'\n```\n');
+    } else {
+      out.push('`'); kids.forEach(k=>walk(k,out,inPre)); out.push('`');
+    }
+  }
+  else if (tag==='p') {
+    const pn = (node.parentNode||{}).tagName||'';
+    if (!pn.match(/^(li|td|th)$/i)) out.push('\n');
+    kids.forEach(k=>walk(k,out,inPre));
+  }
+  else if (tag==='img') {
+    const src = node.getAttribute('src')||''; if(src) out.push('\n![image]('+src+')\n');
+  }
+  else if (tag==='ul'||tag==='ol') {
+    out.push('\n'); kids.forEach(k=>walk(k,out,inPre)); out.push('\n');
+  }
+  else if (tag==='li') {
+    out.push('- '); kids.forEach(k=>walk(k,out,inPre)); out.push('\n');
+  }
+  else if (tag==='blockquote') {
+    out.push('\n> '); kids.forEach(k=>walk(k,out,inPre)); out.push('\n');
+  }
+  else if (tag==='table'||tag==='tr') {
+    out.push('\n'); kids.forEach(k=>walk(k,out,inPre)); tag==='tr'&&out.push('|\n');
+  }
+  else if (tag==='th'||tag==='td') {
+    out.push('| '); kids.forEach(k=>walk(k,out,inPre)); out.push(' ');
+  }
+  else if (tag==='br') { out.push('\n'); }
+  else if (tag==='hr') { out.push('\n---\n'); }
+  else { kids.forEach(k=>walk(k,out,inPre)); }
+}
+
+// ======== API 抓取 ========
+async function getHtml(url) {
+  // 本地模式：走 Python 代理，最可靠
+  if (IS_LOCAL) {
+    const resp = await fetch(API + '/api/article?url=' + encodeURIComponent(url));
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    return data.html;
+  }
+
+  // 线上模式：先尝试 Worker，然后回退公共代理
+  log('  正在尝试 Cloudflare Worker 代理...');
+
+  try {
+    const resp = await fetch('/api/article?url=' + encodeURIComponent(url));
+    const data = await resp.json();
+    if (data.html) { log('  [Worker 代理成功]'); return data.html; }
+    log('  [Worker 失败: ' + (data.error||'未知') + ']');
+  } catch(e) { log('  [Worker 异常: '+e.message+']'); }
+
+  // 回退: 公共 CORS 代理
+  const proxies = [
+    { url: 'https://api.allorigins.win/raw?url=', name: 'allorigins' },
+    { url: 'https://corsproxy.io/?', name: 'corsproxy' },
+  ];
+
+  for (const p of proxies) {
+    log('  尝试 ' + p.name + '...');
+    try {
+      const resp = await fetch(p.url + encodeURIComponent(url), { headers:{'User-Agent':'Mozilla/5.0'} });
+      if (resp.ok) { log('  [' + p.name + ' 成功]'); return await resp.text(); }
+      log('  [' + p.name + ' 失败: HTTP ' + resp.status + ']');
+    } catch(e) { log('  [' + p.name + ' 异常: '+e.message+']'); }
+  }
+
+  throw new Error(
+    '无法访问 CSDN。\n\n' +
+    '原因: CSDN 服务器位于中国大陆，Cloudflare 海外节点无法连接。\n\n' +
+    '解决方法:\n' +
+    '  1. 在项目 web/ 目录下运行 python server.py\n' +
+    '  2. 浏览器打开 http://localhost:8787\n' +
+    '  3. 即可正常使用导出功能'
+  );
+}
+
+// ======== 下载 ========
+function makeName(raw) {
+  return raw.replace(/\*/g,'').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,'_');
+}
+
+function save(name, content) {
+  const b = new Blob([content],{type:'text/markdown;charset=utf-8'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download=name; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+function downloadMerged() {
+  if (!merged) return; save('csdn_merged.md', merged); msg('ok','合并文件已下载');
+}
+
+// ======== 导出主逻辑 ========
+async function doExport() {
+  if (busy) return;
+  const type = document.querySelector('.tab.on').dataset.type;
+  let url = $('#urlInput').value.trim();
+  if (!url) { msg('err','请输入 CSDN 链接'); return; }
+
+  busy = true; startBtn.disabled = true; startBtn.textContent = '导出中...';
+  msgEl.className = 'msg'; merged = ''; dlBtn.classList.add('hide');
+  logEl.textContent = '';
+
+  try {
+    if (type === 'article') {
+      await exportOne(url);
+    } else {
+      await exportMany(url, +$('#startPage').value||1, +$('#pageNum').value||100);
+    }
+  } catch (e) {
+    log('失败: ' + e.message);
+    msg('err', e.message.replace(/\n/g, '<br>'));
+  } finally { resetUI(); }
+}
+
+async function exportOne(url) {
+  prog(30,'获取文章...'); log('获取: '+url);
+  const html = await getHtml(url);
+
+  prog(70,'转换中...');
+  const md = html2md(html, true);
+
+  prog(100,'完成');
+  const doc = new DOMParser().parseFromString(html,'text/html');
+  const t = (doc.querySelector('h1.title-article')||{}).textContent||'csdn_article';
+  const name = makeName(t.trim()) + '.md';
+  save(name, md); merged = md;
+
+  log('完成: '+name);
+  msg('ok','导出完成: '+name);
+  dlBtn.classList.remove('hide');
+}
+
+async function exportMany(url, start, pages) {
+  const urls = [], names = [];
+
+  for (let p = start; p < start + pages; p++) {
+    const pu = url.replace(/\.html$/, '') + (p===1?'.html':'_'+p+'.html');
+    log('扫描第 '+p+' 页: '+pu);
+
+    try {
+      const html = await getHtml(pu);
+      const doc = new DOMParser().parseFromString(html,'text/html');
+      const list = doc.querySelector('ul.column_article_list');
+      if (!list) { log('未找到文章列表, 停止'); break; }
+      if (list.querySelector('p')?.textContent.trim()==='空空如也') { log('该页无内容'); break; }
+      list.querySelectorAll('li').forEach(li => {
+        const a = li.querySelector('a'), h2 = li.querySelector('h2.title');
+        if (a&&h2) { urls.push(a.href); names.push(makeName(h2.textContent.trim())+'.md'); }
+      });
+    } catch (e) { log('扫描失败: '+e.message); break; }
+  }
+
+  log('共 '+urls.length+' 篇');
+  let ok=0, fail=0;
+
+  for (let i = 0; i < urls.length; i++) {
+    prog(20+Math.round(i/urls.length*70),(i+1)+'/'+urls.length);
+    log('['+(i+1)+'/'+urls.length+'] '+names[i]);
+
+    try {
+      const md = html2md(await getHtml(urls[i]), false);
+      save(names[i], md); ok++;
+      if ($('#mergeChk').checked) merged += '\n\n---\n\n## '+names[i].replace('.md','')+'\n\n'+md;
+    } catch (e) { log('  失败: '+e.message); fail++; }
+    await sleep(300);
+  }
+
+  prog(100,'完成');
+  log('成功 '+ok+' 篇, 失败 '+fail+' 篇');
+  msg('ok','完成: 成功 '+ok+' 篇, 失败 '+fail+' 篇');
+  if (merged) { save('csdn_merged.md', merged); dlBtn.classList.remove('hide'); }
+}
+</script>
+</body>
+</html>
